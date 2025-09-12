@@ -2,3 +2,7 @@
 /target/
 **/cert
 **/cred
+.settings
+.project
+.vscode
+.idea
