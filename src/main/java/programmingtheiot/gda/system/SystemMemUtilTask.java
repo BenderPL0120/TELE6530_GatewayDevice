@@ -39,7 +39,10 @@ public class SystemMemUtilTask extends BaseSystemUtilTask
 	@Override
 	public float getTelemetryValue()
 	{
-		return 0.0f;
+		MemoryUsage memUsage = ManagementFactory.getMemoryMXBean().getHeapMemoryUsage();
+		double memUtil = ((double) memUsage.getUsed() / (double) memUsage.getMax()) * 100.0d;
+		
+		return (float) memUtil;
 	}
 	
 }

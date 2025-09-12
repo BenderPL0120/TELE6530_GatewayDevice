@@ -64,7 +64,7 @@ public class GatewayDeviceAppTest
 	@Before
 	public void setUp() throws Exception
 	{
-		gda = new GatewayDeviceApp();
+		gda = new GatewayDeviceApp(new String[0]);
 	}
 	
 	/**
