@@ -38,11 +38,15 @@ public class SystemPerformanceManager
 	// private var's
 	
 	private int pollRate = ConfigConst.DEFAULT_POLL_CYCLES;
+
+	private String locationID = ConfigConst.NOT_SET;
+	private IDataMessageListener dataMsgListener = null;
 	
 	private ScheduledExecutorService schedExecSvc = null;
 	private SystemCpuUtilTask sysCpuUtilTask = null;
 	private SystemMemUtilTask sysMemUtilTask = null;
-	
+	private SystemDiskUtilTask sysDiskUtilTask = null;
+
 	private Runnable taskRunner = null;
 	private boolean isStarted = false;
 	
@@ -62,10 +66,19 @@ public class SystemPerformanceManager
 		if (this.pollRate <= 0) {
 			this.pollRate = ConfigConst.DEFAULT_POLL_CYCLES;
 		}
+
+		this.locationID =
+				ConfigUtil.getInstance().getProperty(
+						ConfigConst.GATEWAY_DEVICE, ConfigConst.LOCATION_ID_PROP, ConfigConst.NOT_SET);
+
+		String diskPath =
+				ConfigUtil.getInstance().getProperty(
+						ConfigConst.GATEWAY_DEVICE, "diskMonitorPath", "/");
 		
 		this.schedExecSvc   = Executors.newScheduledThreadPool(1);
 		this.sysCpuUtilTask = new SystemCpuUtilTask();
 		this.sysMemUtilTask = new SystemMemUtilTask();
+		this.sysDiskUtilTask = new SystemDiskUtilTask(diskPath);
 		
 		this.taskRunner = () -> {
 			this.handleTelemetry();
@@ -79,14 +92,28 @@ public class SystemPerformanceManager
 	{
 		float cpuUtil = this.sysCpuUtilTask.getTelemetryValue();
 		float memUtil = this.sysMemUtilTask.getTelemetryValue();
-		
-		// NOTE: you may need to change the logging level to 'info' to see the message
-		_Logger.info("CPU utilization: " + cpuUtil + ", Mem utilization: " + memUtil);
+		float diskUtil = this.sysDiskUtilTask.getTelemetryValue();
+
+		_Logger.info("System Performance - CPU: " + cpuUtil + "%, Memory: "
+				+ memUtil + "%, Disk: " + diskUtil + "%");
+
+		SystemPerformanceData spd = new SystemPerformanceData();
+		spd.setLocationID(this.locationID);
+		spd.setCpuUtilization(cpuUtil);
+		spd.setMemoryUtilization(memUtil);
+		spd.setDiskUtilization(diskUtil);
+
+		if (this.dataMsgListener != null) {
+			this.dataMsgListener.handleSystemPerformanceMessage(
+					ResourceNameEnum.GDA_SYSTEM_PERF_MSG_RESOURCE, spd);
+		}
 	}
 	
 	public void setDataMessageListener(IDataMessageListener listener)
 	{
-		// TODO: Implementation will be added later
+		if (listener != null) {
+			this.dataMsgListener = listener;
+		}
 	}
 	
 	public boolean startManager()

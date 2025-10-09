@@ -15,7 +15,6 @@ import org.apache.commons.cli.*;
 
 import programmingtheiot.common.ConfigConst;
 import programmingtheiot.common.ConfigUtil;
-import programmingtheiot.gda.system.SystemPerformanceManager;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -25,6 +24,9 @@ import java.util.logging.Logger;
 /**
  * Main GDA application.
  *
+ * This class serves as the entry point for the Gateway Device Application (GDA).
+ * It initializes and manages the lifecycle of the DeviceDataManager, which in turn
+ * manages all connections and system monitoring tasks.
  */
 public class GatewayDeviceApp
 {
@@ -33,20 +35,22 @@ public class GatewayDeviceApp
 	private static final Logger _Logger =
 			Logger.getLogger(GatewayDeviceApp.class.getName());
 
-	public static final long DEFAULT_TEST_RUNTIME = 60000L;
+	public static final long DEFAULT_TEST_RUNTIME = 600000L; // 10 minutes
+	public static final long DEFAULT_SLEEP_INTERVAL = 2000L; // 2 seconds
 
 	// private var's
 
 	private String configFile = ConfigConst.DEFAULT_CONFIG_FILE_NAME;
 
-	private SystemPerformanceManager sysPerfMgr = null;
+	private DeviceDataManager dataMgr = null;
 
 	// constructors
 
 	/**
-	 * Default.
+	 * Default constructor.
+	 * Initializes the GDA with command line arguments.
 	 *
-	 * @param args
+	 * @param args Command line arguments
 	 */
 	public GatewayDeviceApp(String[] args)
 	{
@@ -55,8 +59,6 @@ public class GatewayDeviceApp
 		_Logger.info("Initializing GDA...");
 
 		parseArgs(args);
-
-		this.sysPerfMgr = new SystemPerformanceManager();
 	}
 
 
@@ -65,7 +67,7 @@ public class GatewayDeviceApp
 	/**
 	 * Main application entry point.
 	 *
-	 * @param args
+	 * @param args Command line arguments
 	 */
 	public static void main(String[] args)
 	{
@@ -73,24 +75,27 @@ public class GatewayDeviceApp
 
 		gwApp.startApp();
 
+		// Check if we should run forever or for a limited time
 		boolean runForever =
 				ConfigUtil.getInstance().getBoolean(ConfigConst.GATEWAY_DEVICE, ConfigConst.ENABLE_RUN_FOREVER_KEY);
 
 		if (runForever) {
+			_Logger.info("GDA will run continuously. Press Ctrl+C to stop.");
+
 			try {
 				while (true) {
-					Thread.sleep(2000L);
+					Thread.sleep(DEFAULT_SLEEP_INTERVAL);
 				}
 			} catch (InterruptedException e) {
-				// ignore
+				_Logger.info("GDA interrupted. Shutting down...");
 			}
 
 			gwApp.stopApp(0);
 		} else {
 			try {
-				Thread.sleep(65000L);
+				Thread.sleep(DEFAULT_TEST_RUNTIME);
 			} catch (InterruptedException e) {
-				// ignore
+				_Logger.info("GDA interrupted during test run. Shutting down...");
 			}
 
 			gwApp.stopApp(0);
@@ -109,13 +114,15 @@ public class GatewayDeviceApp
 		_Logger.info("Starting GDA...");
 
 		try {
-			if (this.sysPerfMgr.startManager()) {
-				_Logger.info("GDA started successfully.");
-			} else {
-				_Logger.warning("Failed to start system performance manager!");
-
-				stopApp(-1);
+			if (! ConfigUtil.getInstance().getBoolean(ConfigConst.GATEWAY_DEVICE, ConfigConst.TEST_EMPTY_APP_KEY)) {
+				this.dataMgr = new DeviceDataManager();
 			}
+
+			if (this.dataMgr != null) {
+				this.dataMgr.startManager();
+			}
+
+			_Logger.info("GDA started successfully.");
 		} catch (Exception e) {
 			_Logger.log(Level.SEVERE, "Failed to start GDA. Exiting.", e);
 
@@ -125,6 +132,7 @@ public class GatewayDeviceApp
 
 	/**
 	 * Stops the application.
+	 * Cleanly shuts down the DeviceDataManager before exiting.
 	 *
 	 * @param code The exit code to pass to {@link System.exit()}
 	 */
@@ -133,16 +141,32 @@ public class GatewayDeviceApp
 		_Logger.info("Stopping GDA...");
 
 		try {
-			if (this.sysPerfMgr.stopManager()) {
-				_Logger.log(Level.INFO, "GDA stopped successfully with exit code {0}.", code);
-			} else {
-				_Logger.warning("Failed to stop system performance manager!");
+			// Stop the DeviceDataManager if it exists
+			if (this.dataMgr != null) {
+				_Logger.info("Stopping DeviceDataManager...");
+				this.dataMgr.stopManager();
+				_Logger.info("DeviceDataManager stopped successfully.");
+				this.dataMgr = null;
 			}
+
+			_Logger.log(Level.INFO, "GDA stopped successfully with exit code {0}.", code);
+
 		} catch (Exception e) {
 			_Logger.log(Level.SEVERE, "Failed to cleanly stop GDA. Exiting.", e);
 		}
 
 		System.exit(code);
+	}
+
+	/**
+	 * Gets the DeviceDataManager instance.
+	 * This method is useful for testing and debugging.
+	 *
+	 * @return The DeviceDataManager instance, or null if not initialized
+	 */
+	public DeviceDataManager getDataManager()
+	{
+		return this.dataMgr;
 	}
 
 
@@ -180,6 +204,7 @@ public class GatewayDeviceApp
 				if (cmdLineArgs.hasOption("c")) {
 					argMap.put(ConfigConst.CONFIG_FILE_KEY, cmdLineArgs.getOptionValue("c"));
 					System.setProperty(ConfigConst.CONFIG_FILE_KEY, cmdLineArgs.getOptionValue("c"));
+					_Logger.info("Using custom config file: " + cmdLineArgs.getOptionValue("c"));
 				} else {
 					_Logger.info("No custom config file specified. Using default.");
 				}
@@ -202,7 +227,15 @@ public class GatewayDeviceApp
 	{
 		_Logger.info("Initializing configuration with file: " + fileName);
 
-		// TODO: Configuration initialization logic will be added here
+		// Configuration initialization is handled by ConfigUtil singleton
+		// This method is here for future enhancements if needed
+
+		if (fileName != null && !fileName.isEmpty()) {
+			// ConfigUtil will use the file specified via System property
+			_Logger.info("Configuration file set via system property: " + fileName);
+		} else {
+			_Logger.info("Using default configuration file.");
+		}
 	}
 
 }
