@@ -259,16 +259,16 @@ public class DeviceDataManager implements IDataMessageListener
 			this.mqttClient.subscribeToTopic(ResourceNameEnum.CDA_SYSTEM_PERF_MSG_RESOURCE, qos);
 		} else {
 			_Logger.severe("Failed to connect MQTT client to broker.");
-			
-			// TODO: take appropriate action
 		}
 
 		// Start CoAP server if enabled
 		if (this.enableCoapServer && this.coapServer != null) {
 			_Logger.info("Starting CoAP server...");
-			// TODO: implement this in Lab Module 8
-			// boolean started = this.coapServer.startServer();
-			// _Logger.info("CoAP server started: " + started);
+			if (this.coapServer.startServer()) {
+				_Logger.info("CoAP server started successfully.");
+			} else {
+				_Logger.severe("Failed to start CoAP server. Check log file for details.");
+			}
 		}
 
 		// Start cloud client if enabled
@@ -324,9 +324,11 @@ public class DeviceDataManager implements IDataMessageListener
 		// Stop CoAP server
 		if (this.enableCoapServer && this.coapServer != null) {
 			_Logger.info("Stopping CoAP server...");
-			// TODO: implement this in Lab Module 8
-			// boolean stopped = this.coapServer.stopServer();
-			// _Logger.info("CoAP server stopped: " + stopped);
+			if (this.coapServer.stopServer()) {
+				_Logger.info("CoAP server stopped successfully.");
+			} else {
+				_Logger.severe("Failed to stop CoAP server. Check log file for details.");
+			}
 		}
 
 		// Disconnect cloud client if connected
@@ -386,8 +388,7 @@ public class DeviceDataManager implements IDataMessageListener
 		// Initialize CoAP Server if enabled
 		if (this.enableCoapServer) {
 			_Logger.info("CoAP server enabled.");
-			// TODO: implement this in Lab Module 8
-			// this.coapServer = new CoapServerGateway();
+			this.coapServer = new CoapServerGateway(this);
 		}
 
 		// Initialize Cloud Client if enabled
@@ -416,10 +417,21 @@ public class DeviceDataManager implements IDataMessageListener
 	 */
 	private void handleIncomingDataAnalysis(ResourceNameEnum resourceName, ActuatorData data)
 	{
-		_Logger.log(Level.FINE, "Handling incoming ActuatorData analysis...");
+		_Logger.info("Analyzing incoming actuator data: " + data.getName());
 
-		// TODO: Implement in Part 03 - Connectivity
-		// Will eventually publish back to the CDA using either MQTT or CoAP
+		if (data.isResponseFlagEnabled()) {
+			// This is a response from CDA - process accordingly
+			_Logger.info("Processing actuator response from CDA");
+			// TODO: implement response handling logic if needed
+		} else {
+			// This is a command to be sent to CDA
+			if (this.actuatorDataListener != null) {
+				_Logger.info("Forwarding actuator command to listener");
+				this.actuatorDataListener.onActuatorDataUpdate(data);
+			} else {
+				_Logger.warning("No actuator data listener registered");
+			}
+		}
 	}
 
 	/**

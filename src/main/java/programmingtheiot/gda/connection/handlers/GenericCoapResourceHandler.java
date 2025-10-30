@@ -22,68 +22,86 @@ import programmingtheiot.common.ConfigUtil;
 import programmingtheiot.common.IDataMessageListener;
 import programmingtheiot.common.ResourceNameEnum;
 
-
-/**
- * Shell representation of class for student implementation.
- *
- */
 public class GenericCoapResourceHandler extends CoapResource
 {
 	// static
-	
+
 	private static final Logger _Logger =
-		Logger.getLogger(GenericCoapResourceHandler.class.getName());
-	
+			Logger.getLogger(GenericCoapResourceHandler.class.getName());
+
 	// params
-	
-	
+
+	private IDataMessageListener dataMsgListener = null;
+
 	// constructors
-	
-	/**
-	 * Constructor.
-	 * 
-	 * @param resource Basically, the path (or topic)
-	 */
+
 	public GenericCoapResourceHandler(ResourceNameEnum resource)
 	{
 		this(resource.getResourceName());
 	}
-	
-	/**
-	 * Constructor.
-	 * 
-	 * @param resourceName The name of the resource.
-	 */
+
 	public GenericCoapResourceHandler(String resourceName)
 	{
 		super(resourceName);
+
+		// Make observable
+		setObservable(true);
 	}
-	
-	
+
 	// public methods
-	
+
 	@Override
 	public void handleDELETE(CoapExchange context)
 	{
+		_Logger.info("DELETE request received for: " + super.getName());
+
+		context.accept();
+		context.respond(ResponseCode.DELETED, "Resource deleted: " + super.getName());
 	}
-	
+
 	@Override
 	public void handleGET(CoapExchange context)
 	{
+		_Logger.info("GET request received for: " + super.getName());
+
+		context.accept();
+
+		String responseMsg = "Generic Resource: " + super.getName();
+		context.respond(ResponseCode.CONTENT, responseMsg);
 	}
-	
+
 	@Override
 	public void handlePOST(CoapExchange context)
 	{
+		_Logger.info("POST request received for: " + super.getName());
+
+		context.accept();
+
+		// For generic handler, just acknowledge
+		context.respond(ResponseCode.CREATED, "Resource created: " + super.getName());
 	}
-	
+
 	@Override
 	public void handlePUT(CoapExchange context)
 	{
+		_Logger.info("PUT request received for: " + super.getName());
+
+		context.accept();
+
+		// Log the payload if present
+		if (context.getRequestPayload() != null) {
+			String payload = new String(context.getRequestPayload());
+			_Logger.fine("Payload: " + payload);
+		}
+
+		context.respond(ResponseCode.CHANGED, "Resource updated: " + super.getName());
 	}
-	
+
 	public void setDataMessageListener(IDataMessageListener listener)
 	{
+		if (listener != null) {
+			this.dataMsgListener = listener;
+			_Logger.info("Data message listener set for: " + super.getName());
+		}
 	}
-	
 }
