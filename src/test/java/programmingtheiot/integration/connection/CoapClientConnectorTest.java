@@ -215,5 +215,37 @@ public class CoapClientConnectorTest
 		
 		assertTrue(this.coapClient.sendDeleteRequest(ResourceNameEnum.GDA_MGMT_STATUS_CMD_RESOURCE, null, false, DEFAULT_TIMEOUT));
 	}
-	
+
+	@Test
+	public void testObserve()
+	{
+		_Logger.info("Testing CoAP Observe...");
+
+		// Define the resource to observe
+		ResourceNameEnum resource = ResourceNameEnum.CDA_SYSTEM_PERF_MSG_RESOURCE;
+
+		try {
+			// 1. Start the observer
+			_Logger.info("Starting observer for: " + resource.getResourceName());
+			assertTrue("Failed to start observer", this.coapClient.startObserver(resource, null, DEFAULT_TIMEOUT));
+
+			// 2. Wait for notifications
+			_Logger.info("Waiting 10 seconds for notifications...");
+			Thread.sleep(DEFAULT_TIMEOUT * 2 * 1000);
+
+			// 3. Stop the observer
+			_Logger.info("Stopping observer for: " + resource.getResourceName());
+			assertTrue("Failed to stop observer", this.coapClient.stopObserver(resource, null, DEFAULT_TIMEOUT));
+
+			// 4. Wait a moment to ensure it's stopped
+			_Logger.info("Waiting 2 more seconds to ensure observer is stopped.");
+			Thread.sleep(2000);
+
+			_Logger.info("CoAP Observe test complete.");
+
+		} catch (InterruptedException e) {
+			_Logger.warning("Thread sleep interrupted during observe test.");
+			fail("Test interrupted: " + e.getMessage());
+		}
+	}
 }

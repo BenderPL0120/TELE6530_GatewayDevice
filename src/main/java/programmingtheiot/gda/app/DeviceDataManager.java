@@ -32,6 +32,7 @@ import programmingtheiot.gda.connection.IPersistenceClient;
 import programmingtheiot.gda.connection.IPubSubClient;
 import programmingtheiot.gda.connection.IRequestResponseClient;
 import programmingtheiot.gda.connection.MqttClientConnector;
+import programmingtheiot.gda.connection.CoapClientConnector;
 import programmingtheiot.gda.connection.RedisPersistenceAdapter;
 import programmingtheiot.gda.connection.SmtpClientConnector;
 import programmingtheiot.gda.system.SystemPerformanceManager;
@@ -53,6 +54,7 @@ public class DeviceDataManager implements IDataMessageListener
 
 	private boolean enableMqttClient = true;
 	private boolean enableCoapServer = false;
+	private boolean enableCoapClient = false;
 	private boolean enableCloudClient = false;
 	private boolean enableSmtpClient = false;
 	private boolean enablePersistenceClient = false;
@@ -64,6 +66,7 @@ public class DeviceDataManager implements IDataMessageListener
 	private IPersistenceClient persistenceClient = null;
 	private IRequestResponseClient smtpClient = null;
 	private CoapServerGateway coapServer = null;
+	private IRequestResponseClient coapClient = null;
 	private SystemPerformanceManager sysPerfMgr = null;
 
 	private DataUtil dataUtil = null;
@@ -87,6 +90,10 @@ public class DeviceDataManager implements IDataMessageListener
 		this.enableCoapServer =
 				configUtil.getBoolean(
 						ConfigConst.GATEWAY_DEVICE, ConfigConst.ENABLE_COAP_SERVER_KEY);
+
+		this.enableCoapClient =
+				configUtil.getBoolean(
+						ConfigConst.GATEWAY_DEVICE, ConfigConst.ENABLE_COAP_CLIENT_KEY);
 
 		this.enableCloudClient =
 				configUtil.getBoolean(
@@ -271,6 +278,10 @@ public class DeviceDataManager implements IDataMessageListener
 			}
 		}
 
+		// Start CoAP client if enabled
+		// There is no start or stop method associated with CoapClientConnector, 
+		// nothing more needs to be done.
+
 		// Start cloud client if enabled
 		if (this.enableCloudClient && this.cloudClient != null) {
 			_Logger.info("Starting cloud client...");
@@ -389,6 +400,13 @@ public class DeviceDataManager implements IDataMessageListener
 		if (this.enableCoapServer) {
 			_Logger.info("CoAP server enabled.");
 			this.coapServer = new CoapServerGateway(this);
+		}
+
+		// Initialize CoAP Client if enabled
+		if (this.enableCoapClient) {
+			_Logger.info("CoAP client enabled.");
+			this.coapClient = new CoapClientConnector();
+			this.coapClient.setDataMessageListener(this);
 		}
 
 		// Initialize Cloud Client if enabled

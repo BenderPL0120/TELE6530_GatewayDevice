@@ -5,6 +5,7 @@ import java.util.logging.Logger;
 import org.eclipse.californium.core.CoapResource;
 import org.eclipse.californium.core.coap.CoAP.ResponseCode;
 import org.eclipse.californium.core.server.resources.CoapExchange;
+import org.eclipse.californium.core.coap.MediaTypeRegistry;
 
 import programmingtheiot.common.ConfigConst;
 import programmingtheiot.common.ConfigUtil;
@@ -26,6 +27,7 @@ public class UpdateSystemPerformanceResourceHandler extends CoapResource
     // params
 
     private IDataMessageListener dataMsgListener = null;
+    private SystemPerformanceData lastData = null;
 
     // constructors
 
@@ -67,13 +69,20 @@ public class UpdateSystemPerformanceResourceHandler extends CoapResource
     public void handleGET(CoapExchange context)
     {
         _Logger.info("GET request received for: " + super.getName());
-
         context.accept();
 
-        // For now, return a simple status message
-        // In future, could return the latest cached SystemPerformanceData
-        String responseMsg = "System Performance Resource: " + super.getName() + " - Status: OK";
-        context.respond(ResponseCode.CONTENT, responseMsg);
+        String jsonData;
+
+        if (this.lastData != null) {
+            // convert date to JSON if cached
+            jsonData = DataUtil.getInstance().systemPerformanceDataToJson(this.lastData);
+        } else {
+            // or return an empty JSON object
+            jsonData = DataUtil.getInstance().systemPerformanceDataToJson(new SystemPerformanceData());
+        }
+
+        // respond as JSON format
+        context.respond(ResponseCode.CONTENT, jsonData, MediaTypeRegistry.APPLICATION_JSON);
     }
 
     /**
@@ -108,6 +117,8 @@ public class UpdateSystemPerformanceResourceHandler extends CoapResource
 
                 SystemPerformanceData sysPerfData =
                         DataUtil.getInstance().jsonToSystemPerformanceData(jsonData);
+
+                this.lastData = sysPerfData; // cached data
 
                 // Pass the data to the listener (DeviceDataManager)
                 this.dataMsgListener.handleSystemPerformanceMessage(
