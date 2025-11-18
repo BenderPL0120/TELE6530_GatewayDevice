@@ -200,7 +200,25 @@ public class ConfigConst
 	public static final String ENABLE_SYSTEM_PERF_KEY        = "enableSystemPerformance";
 	
 	public static final String ENABLE_RUN_FOREVER_KEY        = "enableRunForever";
+
+	public static final String HANDLE_HUMIDITY_CHANGE_ON_DEVICE_KEY = "handleHumidityChangeOnDevice";
+	public static final String HUMIDITY_MAX_TIME_PAST_THRESHOLD_KEY = "humidityMaxTimePastThreshold";
+	public static final String NOMINAL_HUMIDITY_SETTING_KEY       = "nominalHumiditySetting";
+	public static final String TRIGGER_HUMIDIFIER_FLOOR_KEY       = "triggerHumidifierFloor";
+	public static final String TRIGGER_HUMIDIFIER_CEILING_KEY     = "triggerHumidifierCeiling";
 	
+	public static final String HANDLE_TEMP_CHANGE_ON_DEVICE_KEY = "handleTempChangeOnDevice";
+	public static final String TEMP_MAX_TIME_PAST_THRESHOLD_KEY = "tempMaxTimePastThreshold";
+	public static final String NOMINAL_TEMP_SETTING_KEY       = "nominalTempSetting";
+	public static final String TRIGGER_TEMP_FLOOR_KEY         = "triggerTempFloor";
+	public static final String TRIGGER_TEMP_CEILING_KEY       = "triggerTempCeiling";
+
+	public static final String HANDLE_PRESSURE_CHANGE_ON_DEVICE_KEY = "handlePressureChangeOnDevice";
+	public static final String PRESSURE_MAX_TIME_PAST_THRESHOLD_KEY = "pressureMaxTimePastThreshold";
+	public static final String NOMINAL_PRESSURE_SETTING_KEY       = "nominalPressureSetting";
+	public static final String TRIGGER_PRESSURE_FLOOR_KEY         = "triggerPressureFloor";
+	public static final String TRIGGER_PRESSURE_CEILING_KEY       = "triggerPressureCeiling";
+
 	public static final String AWS_CLOUD_SVC_NAME     = "AWS";
 	public static final String AZURE_CLOUD_SVC_NAME   = "Azure";
 	public static final String GCP_CLOUD_SVC_NAME     = "GCP";

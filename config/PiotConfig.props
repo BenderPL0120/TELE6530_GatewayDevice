@@ -40,15 +40,15 @@ enableCrypt    = True
 #
 [Mqtt.GatewayService]
 credFile       = ./cred/PiotMqttCred.props
-certFile       = ./cert/PiotMqttLocalCertFile.pem
+certFile       = ./cert/ca.crt
 host           = localhost
 port           = 1883
 securePort     = 8883
 defaultQoS     = 0
-keepAlive      = 60
+keepAlive      = 300
 enableAuth     = False
-enableCrypt    = False
-useAsyncClient = False
+enableCrypt    = True
+useAsyncClient = True
 
 #
 # CoAP client and server configuration information
@@ -71,12 +71,33 @@ deviceLocationID        = gatewaydevice001
 enableLogging           = True
 pollCycleSecs           = 60
 enableMqttClient        = True
-enableCoapServer        = True
-enableCoapClient        = True
+enableCoapServer        = False
+enableCoapClient        = False
 enableCloudClient       = False
 enableSmtpClient        = False
 enablePersistenceClient = False
-enableSystemPerformance = True
+enableSystemPerformance = False
 testGdaDataPath         = /tmp/gda-data
 testCdaDataPath         = /tmp/cda-data
 testEmptyApp            = False
+
+# Humidity control configuration
+handleHumidityChangeOnDevice    = True
+humidityMaxTimePastThreshold    = 300
+nominalHumiditySetting          = 40.0
+triggerHumidifierFloor          = 30.0
+triggerHumidifierCeiling        = 50.0
+
+# Temperature control configuration
+handleTempChangeOnDevice        = True
+tempMaxTimePastThreshold        = 300
+nominalTempSetting              = 20.0
+triggerTempFloor                = 10.0
+triggerTempCeiling              = 30.0
+
+# Pressure control configuration
+handlePressureChangeOnDevice    = True
+pressureMaxTimePastThreshold    = 300
+nominalPressureSetting          = 1000.0
+triggerPressureFloor            = 950.0
+triggerPressureCeiling          = 1050.0
