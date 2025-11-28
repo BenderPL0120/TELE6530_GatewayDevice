@@ -33,6 +33,7 @@ import programmingtheiot.gda.connection.CloudClientConnector;
 import programmingtheiot.gda.connection.CoapServerGateway;
 import programmingtheiot.gda.connection.IPersistenceClient;
 import programmingtheiot.gda.connection.IPubSubClient;
+import programmingtheiot.gda.connection.ICloudClient;
 import programmingtheiot.gda.connection.IRequestResponseClient;
 import programmingtheiot.gda.connection.MqttClientConnector;
 import programmingtheiot.gda.connection.CoapClientConnector;
@@ -65,7 +66,7 @@ public class DeviceDataManager implements IDataMessageListener
 
 	private IActuatorDataListener actuatorDataListener = null;
 	private IPubSubClient mqttClient = null;
-	private IPubSubClient cloudClient = null;
+	private ICloudClient cloudClient = null;
 	private IPersistenceClient persistenceClient = null;
 	private IRequestResponseClient smtpClient = null;
 	private CoapServerGateway coapServer = null;
@@ -217,17 +218,34 @@ public class DeviceDataManager implements IDataMessageListener
 	@Override
 	public boolean handleIncomingMessage(ResourceNameEnum resourceName, String msg)
 	{
-		if (msg != null) {
-			_Logger.info("Handling incoming generic message: " + msg);
+		if (resourceName != null && msg != null) {
+			try {
+				if (resourceName == ResourceNameEnum.CDA_ACTUATOR_CMD_RESOURCE) {
+					_Logger.info("Handling incoming ActuatorData message: " + msg);
 
-			// The msg will most likely be JSON that represents either
-			// an ActuatorData or SystemStateData instance
+					// Convert to ActuatorData to validate
+					ActuatorData ad = DataUtil.getInstance().jsonToActuatorData(msg);
 
-			return true;
+					// Convert back to JSON to send to CDA via MQTT
+					String jsonData = DataUtil.getInstance().actuatorDataToJson(ad);
+
+					if (this.mqttClient != null) {
+						_Logger.fine("Publishing data to MQTT broker: " + jsonData);
+						// Publish to the Actuator Command Resource topic
+						return this.mqttClient.publishMessage(resourceName, jsonData, 0);
+					}
+				} else {
+					_Logger.warning("Failed to parse incoming message. Unknown type: " + msg);
+					return false;
+				}
+			} catch (Exception e) {
+				_Logger.log(Level.WARNING, "Failed to process incoming message for resource: " + resourceName, e);
+			}
 		} else {
-			_Logger.warning("Received null message");
-			return false;
+			_Logger.warning("Incoming message has no data. Ignoring for resource: " + resourceName);
 		}
+
+		return false;
 	}
 
 	@Override
@@ -256,8 +274,8 @@ public class DeviceDataManager implements IDataMessageListener
 			// Perform incoming data analysis for threshold checking
 			this.handleIncomingDataAnalysis(resourceName, data);
 			
-			// Handle upstream transmission
-			this.handleUpstreamTransmission(resourceName, jsonData, qos);
+			// Handle upstream transmission, send data directly
+			this.handleUpstreamTransmission(resourceName, data);
 			
 			return true;
 		} else {
@@ -288,8 +306,8 @@ public class DeviceDataManager implements IDataMessageListener
 					this.persistenceClient.storeData(resourceName.getResourceName(), qos, data);
 				}
 
-				// Handle upstream transmission
-				this.handleUpstreamTransmission(resourceName, jsonData, qos);
+				// Handle upstream transmission， send data directly
+				this.handleUpstreamTransmission(resourceName, data);
 			}
 
 			return true;
@@ -360,9 +378,11 @@ public class DeviceDataManager implements IDataMessageListener
 		// Start cloud client if enabled
 		if (this.enableCloudClient && this.cloudClient != null) {
 			_Logger.info("Starting cloud client...");
-			// TODO: implement this in Lab Module 10
-			// boolean connected = this.cloudClient.connectClient();
-			// _Logger.info("Cloud client started: " + connected);
+			if (this.cloudClient.connectClient()) {
+				_Logger.info("Cloud client started successfully.");
+			} else {
+				_Logger.warning("Failed to start cloud client.");
+			}
 		}
 
 		// Start persistence client if enabled
@@ -418,9 +438,11 @@ public class DeviceDataManager implements IDataMessageListener
 		// Disconnect cloud client if connected
 		if (this.enableCloudClient && this.cloudClient != null) {
 			_Logger.info("Stopping cloud client...");
-			// TODO: implement this in Lab Module 10
-			// boolean disconnected = this.cloudClient.disconnectClient();
-			// _Logger.info("Cloud client stopped: " + disconnected);
+			if (this.cloudClient.disconnectClient()) {
+				_Logger.info("Cloud client stopped successfully.");
+			} else {
+				_Logger.warning("Failed to stop cloud client.");
+			}
 		}
 
 		// Disconnect persistence client if connected
@@ -543,8 +565,7 @@ public class DeviceDataManager implements IDataMessageListener
 		// Initialize Cloud Client if enabled
 		if (this.enableCloudClient) {
 			_Logger.info("Cloud client enabled.");
-			// TODO: implement this in Lab Module 10
-			// this.cloudClient = new CloudClientConnector();
+			 this.cloudClient = new CloudClientConnector();
 		}
 
 		// Initialize Persistence Client if enabled
@@ -911,17 +932,37 @@ public class DeviceDataManager implements IDataMessageListener
 	}
 
 	/**
-	 * Handles upstream transmission of data to cloud services.
+	 * Handles upstream transmission of SensorData to cloud services.
 	 *
-	 * @param resourceName The resource name enum
-	 * @param jsonData The JSON data to transmit
-	 * @param qos Quality of Service level
-	 * @return true if transmission successful, false otherwise
+	 * @param resource The resource name enum
+	 * @param data The SensorData to transmit
 	 */
-	private void handleUpstreamTransmission(ResourceNameEnum resource, String jsonData, int qos)
+	private void handleUpstreamTransmission(ResourceNameEnum resource, SensorData data)
 	{
-		// NOTE: This will be implemented in Part 04
-		_Logger.info("TODO: Send JSON data to cloud service: " + resource);
+		if (this.cloudClient != null) {
+			if (this.cloudClient.sendEdgeDataToCloud(resource, data)) {
+				_Logger.fine("Sent SensorData upstream to CSP.");
+			} else {
+				_Logger.warning("Failed to send SensorData upstream to CSP.");
+			}
+		}
+	}
+
+	/**
+	 * Handles upstream transmission of SystemPerformanceData to cloud services.
+	 *
+	 * @param resource The resource name enum
+	 * @param data The SystemPerformanceData to transmit
+	 */
+	private void handleUpstreamTransmission(ResourceNameEnum resource, SystemPerformanceData data)
+	{
+		if (this.cloudClient != null) {
+			if (this.cloudClient.sendEdgeDataToCloud(resource, data)) {
+				_Logger.fine("Sent SystemPerformanceData upstream to CSP.");
+			} else {
+				_Logger.warning("Failed to send SystemPerformanceData upstream to CSP.");
+			}
+		}
 	}
 
 	/**

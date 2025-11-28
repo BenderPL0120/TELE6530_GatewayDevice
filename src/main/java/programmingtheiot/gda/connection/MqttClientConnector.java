@@ -60,9 +60,7 @@ public class MqttClientConnector implements IPubSubClient, MqttCallbackExtended
 	private MemoryPersistence persistence = null;
 	private MqttConnectOptions connOpts = null;
 
-	// NOTE: MQTT client updated to use async client vs sync client
 	private MqttAsyncClient mqttClient = null;
-	// private MqttClient mqttClient = null;
 
 	private IDataMessageListener dataMsgListener = null;
 	private boolean useAsyncClient = false;
@@ -72,6 +70,9 @@ public class MqttClientConnector implements IPubSubClient, MqttCallbackExtended
 	private boolean useCleanSession = false;
 	private boolean enableAutoReconnect = true;
 
+	private IConnectionListener connListener = null;
+	private boolean useCloudGatewayConfig = false;
+
 	// constructors
 
 	/**
@@ -79,11 +80,34 @@ public class MqttClientConnector implements IPubSubClient, MqttCallbackExtended
 	 * */
 	public MqttClientConnector()
 	{
-		super();
-
-		initClientParameters(ConfigConst.MQTT_GATEWAY_SERVICE);
+		this(false);
 	}
 
+	/**
+	 * Constructor.
+	 * * @param useCloudGatewayConfig
+	 * */
+	public MqttClientConnector(boolean useCloudGatewayConfig)
+	{
+		this(useCloudGatewayConfig ? ConfigConst.CLOUD_GATEWAY_SERVICE : null);
+	}
+
+	/**
+	 * Constructor.
+	 * * @param configSectionName
+	 * */
+	public MqttClientConnector(String configSectionName)
+	{
+		super();
+
+		if (configSectionName != null && configSectionName.trim().length() > 0) {
+			this.useCloudGatewayConfig = true;
+			initClientParameters(configSectionName);
+		} else {
+			this.useCloudGatewayConfig = false;
+			initClientParameters(ConfigConst.MQTT_GATEWAY_SERVICE);
+		}
+	}
 
 	// public methods
 
@@ -154,49 +178,18 @@ public class MqttClientConnector implements IPubSubClient, MqttCallbackExtended
 			return false;
 		}
 
-		if (qos < 0 || qos > 2) {
-			qos = ConfigConst.DEFAULT_QOS;
-		}
-
-		try {
-			byte[] payload = msg.getBytes();
-			MqttMessage mqttMsg = new MqttMessage(payload);
-			mqttMsg.setQos(qos);
-			this.mqttClient.publish(topicName.getResourceName(), mqttMsg);
-			return true;
-		} catch (Exception e) {
-			_Logger.log(Level.SEVERE, "Failed to publish message to topic: " + topicName, e);
-		}
-
-		return false;
+		return publishMessage(topicName.getResourceName(), msg.getBytes(), qos);
 	}
 
 	@Override
 	public boolean subscribeToTopic(ResourceNameEnum topicName, int qos)
 	{
-		if (!this.mqttClient.isConnected()) {
-        _Logger.warning("MQTT client not yet connected. Subscription will be handled in connectComplete()");
-        return false;
-    }
-		
 		if (topicName == null) {
 			_Logger.warning("Resource is null. Unable to subscribe to topic: " + this.brokerAddr);
 			return false;
 		}
 
-		if (qos < 0 || qos > 2) {
-			qos = ConfigConst.DEFAULT_QOS;
-		}
-
-		try {
-			this.mqttClient.subscribe(topicName.getResourceName(), qos);
-			_Logger.info("Successfully subscribed to topic: " + topicName.getResourceName());
-			return true;
-		} catch (Exception e) {
-			_Logger.log(Level.SEVERE, "Failed to subscribe to topic: " + topicName, e);
-		}
-
-		return false;
+		return subscribeToTopic(topicName.getResourceName(), qos);
 	}
 
 	@Override
@@ -207,20 +200,20 @@ public class MqttClientConnector implements IPubSubClient, MqttCallbackExtended
 			return false;
 		}
 
-		try {
-			this.mqttClient.unsubscribe(topicName.getResourceName());
-			_Logger.info("Successfully unsubscribed from topic: " + topicName.getResourceName());
-			return true;
-		} catch (Exception e) {
-			_Logger.log(Level.SEVERE, "Failed to unsubscribe from topic: " + topicName, e);
-		}
-
-		return false;
+		return unsubscribeFromTopic(topicName.getResourceName());
 	}
 
 	@Override
 	public boolean setConnectionListener(IConnectionListener listener)
 	{
+		if (listener != null) {
+			_Logger.info("Setting connection listener.");
+			this.connListener = listener;
+			return true;
+		} else {
+			_Logger.warning("No connection listener specified. Ignoring.");
+		}
+
 		return false;
 	}
 
@@ -244,31 +237,40 @@ public class MqttClientConnector implements IPubSubClient, MqttCallbackExtended
 
 		int qos = 1;
 
-		// Subscribe to topics using dedicated listeners
-		try {
-			_Logger.info("Subscribing to topic: " + ResourceNameEnum.CDA_ACTUATOR_RESPONSE_RESOURCE.getResourceName());
+		// Only subscribe to local CDA topics if we are NOT in cloud mode
+		if (!this.useCloudGatewayConfig) {
+			try {
+				_Logger.info("Subscribing to topic: " + ResourceNameEnum.CDA_ACTUATOR_RESPONSE_RESOURCE.getResourceName());
 
-			this.mqttClient.subscribe(
-					ResourceNameEnum.CDA_ACTUATOR_RESPONSE_RESOURCE.getResourceName(),
-					qos,
-					new ActuatorResponseMessageListener(ResourceNameEnum.CDA_ACTUATOR_RESPONSE_RESOURCE, this.dataMsgListener));
+				this.mqttClient.subscribe(
+						ResourceNameEnum.CDA_ACTUATOR_RESPONSE_RESOURCE.getResourceName(),
+						qos,
+						new ActuatorResponseMessageListener(ResourceNameEnum.CDA_ACTUATOR_RESPONSE_RESOURCE, this.dataMsgListener));
 
-			_Logger.info("Subscribing to topic: " + ResourceNameEnum.CDA_SENSOR_MSG_RESOURCE.getResourceName());
+				_Logger.info("Subscribing to topic: " + ResourceNameEnum.CDA_SENSOR_MSG_RESOURCE.getResourceName());
 
-			this.mqttClient.subscribe(
-					ResourceNameEnum.CDA_SENSOR_MSG_RESOURCE.getResourceName(),
-					qos,
-					new SensorDataMessageListener(ResourceNameEnum.CDA_SENSOR_MSG_RESOURCE, this.dataMsgListener));
+				this.mqttClient.subscribe(
+						ResourceNameEnum.CDA_SENSOR_MSG_RESOURCE.getResourceName(),
+						qos,
+						new SensorDataMessageListener(ResourceNameEnum.CDA_SENSOR_MSG_RESOURCE, this.dataMsgListener));
 
-			_Logger.info("Subscribing to topic: " + ResourceNameEnum.CDA_SYSTEM_PERF_MSG_RESOURCE.getResourceName());
+				_Logger.info("Subscribing to topic: " + ResourceNameEnum.CDA_SYSTEM_PERF_MSG_RESOURCE.getResourceName());
 
-			this.mqttClient.subscribe(
-					ResourceNameEnum.CDA_SYSTEM_PERF_MSG_RESOURCE.getResourceName(),
-					qos,
-					new SystemPerformanceDataMessageListener(ResourceNameEnum.CDA_SYSTEM_PERF_MSG_RESOURCE, this.dataMsgListener));
+				this.mqttClient.subscribe(
+						ResourceNameEnum.CDA_SYSTEM_PERF_MSG_RESOURCE.getResourceName(),
+						qos,
+						new SystemPerformanceDataMessageListener(ResourceNameEnum.CDA_SYSTEM_PERF_MSG_RESOURCE, this.dataMsgListener));
 
-		} catch (MqttException e) {
-			_Logger.log(Level.WARNING, "Failed to subscribe to one or more topics.", e);
+			} catch (MqttException e) {
+				_Logger.log(Level.WARNING, "Failed to subscribe to one or more topics.", e);
+			}
+		} else {
+			_Logger.info("Cloud Gateway Config enabled. Skipping default local topic subscriptions.");
+		}
+
+		// Notify the listener
+		if (this.connListener != null) {
+			this.connListener.onConnect();
 		}
 	}
 
@@ -293,6 +295,91 @@ public class MqttClientConnector implements IPubSubClient, MqttCallbackExtended
 		_Logger.info("MQTT message arrived on topic (unhandled listener): '" + topic + "'");
 	}
 
+	// protected methods
+
+	protected boolean publishMessage(String topicName, byte[] payload, int qos)
+	{
+		if (topicName == null) {
+			_Logger.warning("Resource is null. Unable to publish message: " + this.brokerAddr);
+			return false;
+		}
+
+		if (payload == null || payload.length == 0) {
+			_Logger.warning("Message is null or empty. Unable to publish message: " + this.brokerAddr);
+			return false;
+		}
+
+		if (qos < 0 || qos > 2) {
+			_Logger.warning("Invalid QoS. Using default. QoS requested: " + qos);
+			qos = ConfigConst.DEFAULT_QOS;
+		}
+
+		try {
+			MqttMessage mqttMsg = new MqttMessage();
+			mqttMsg.setQos(qos);
+			mqttMsg.setPayload(payload);
+
+			this.mqttClient.publish(topicName, mqttMsg);
+
+			return true;
+		} catch (Exception e) {
+			_Logger.log(Level.SEVERE, "Failed to publish message to topic: " + topicName, e);
+		}
+
+		return false;
+	}
+
+	protected boolean subscribeToTopic(String topicName, int qos)
+	{
+		return subscribeToTopic(topicName, qos, null);
+	}
+
+	protected boolean subscribeToTopic(String topicName, int qos, IMqttMessageListener listener)
+	{
+		if (topicName == null) {
+			_Logger.warning("Resource is null. Unable to subscribe to topic: " + this.brokerAddr);
+			return false;
+		}
+
+		if (qos < 0 || qos > 2) {
+			_Logger.warning("Invalid QoS. Using default. QoS requested: " + qos);
+			qos = ConfigConst.DEFAULT_QOS;
+		}
+
+		try {
+			if (listener != null) {
+				this.mqttClient.subscribe(topicName, qos, listener);
+				_Logger.info("Successfully subscribed to topic with listener: " + topicName);
+			} else {
+				this.mqttClient.subscribe(topicName, qos);
+				_Logger.info("Successfully subscribed to topic: " + topicName);
+			}
+
+			return true;
+		} catch (Exception e) {
+			_Logger.log(Level.SEVERE, "Failed to subscribe to topic: " + topicName, e);
+		}
+
+		return false;
+	}
+
+	protected boolean unsubscribeFromTopic(String topicName)
+	{
+		if (topicName == null) {
+			_Logger.warning("Resource is null. Unable to unsubscribe from topic: " + this.brokerAddr);
+			return false;
+		}
+
+		try {
+			this.mqttClient.unsubscribe(topicName);
+			_Logger.info("Successfully unsubscribed from topic: " + topicName);
+			return true;
+		} catch (Exception e) {
+			_Logger.log(Level.SEVERE, "Failed to unsubscribe from topic: " + topicName, e);
+		}
+
+		return false;
+	}
 
 	// private methods
 

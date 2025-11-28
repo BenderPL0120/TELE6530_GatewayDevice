@@ -105,6 +105,54 @@ public class DataUtil
 	}
 
 	/**
+	 * Converts an ActuatorData instance to a TimeAndValuePayloadData instance
+	 * and then to a JSON string.
+	 *
+	 * @param data The ActuatorData to convert.
+	 * @return String The JSON string representation of TimeAndValuePayloadData.
+	 */
+	public String actuatorDataToTimeAndValueJson(ActuatorData data)
+	{
+		String jsonData = null;
+
+		if (data != null) {
+			// package ActuatorData into TimeAndValuePayloadData
+			TimeAndValuePayloadData tvData = new TimeAndValuePayloadData(data);
+			jsonData = this.gson.toJson(tvData);
+
+			_Logger.log(Level.FINE, "Converted ActuatorData to TimeAndValue JSON: " + jsonData);
+		} else {
+			_Logger.log(Level.WARNING, "ActuatorData is null - cannot convert to TimeAndValue JSON");
+		}
+
+		return jsonData;
+	}
+
+	/**
+	 * Converts a SensorData instance to a TimeAndValuePayloadData instance
+	 * and then to a JSON string.
+	 *
+	 * @param data The SensorData to convert.
+	 * @return String The JSON string representation of TimeAndValuePayloadData.
+	 */
+	public String sensorDataToTimeAndValueJson(SensorData data)
+	{
+		String jsonData = null;
+
+		if (data != null) {
+			// package SensorData into TimeAndValuePayloadData
+			TimeAndValuePayloadData tvData = new TimeAndValuePayloadData(data);
+			jsonData = this.gson.toJson(tvData);
+
+			_Logger.log(Level.FINE, "Converted SensorData to TimeAndValue JSON: " + jsonData);
+		} else {
+			_Logger.log(Level.WARNING, "SensorData is null - cannot convert to TimeAndValue JSON");
+		}
+
+		return jsonData;
+	}
+
+	/**
 	 * Converts SystemPerformanceData object to JSON string.
 	 *
 	 * @param sysPerfData The SystemPerformanceData object to convert

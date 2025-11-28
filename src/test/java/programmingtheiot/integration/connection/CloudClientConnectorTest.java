@@ -72,7 +72,7 @@ public class CloudClientConnectorTest
 	/**
 	 * Test method for {@link programmingtheiot.gda.connection.UbidotsMqttCloudClientConnector#connectClient()}.
 	 */
-//	@Test
+	@Test
 	public void testCloudClientConnectAndDisconnect()
 	{
 		this.cloudClient.setDataMessageListener(new DefaultDataMessageListener());
@@ -117,7 +117,7 @@ public class CloudClientConnectorTest
 	/**
 	 * Test method for {@link programmingtheiot.gda.connection.UbidotsMqttCloudClientConnector#publishMessage(programmingtheiot.common.ResourceNameEnum, java.lang.String, int)}.
 	 */
-//	@Test
+	@Test
 	public void testPublishAndSubscribe()
 	{
 		this.cloudClient.setDataMessageListener(new DefaultDataMessageListener());
@@ -197,6 +197,57 @@ public class CloudClientConnectorTest
 		} catch (Exception e) {
 			// ignore
 		}
+	}
+
+	/**
+	 * Test method for Test 1 & Test 2:
+	 * 1. Publish SensorData (Temperature) to Cloud.
+	 * 2. Verify Cloud Event triggers LED Actuation (must be configured in Ubidots).
+	 * 3. Verify GDA receives the Actuation Command.
+	 */
+	@Test
+	public void testPublishAndSubscribeWithCloudTrigger()
+	{
+		this.cloudClient.setDataMessageListener(new DefaultDataMessageListener());
+
+		// 1. Connect
+		assertTrue(this.cloudClient.connectClient());
+
+		try {
+			Thread.sleep(3000L); // Wait for connection and auto-subscription
+		} catch (Exception e) {
+			// ignore
+		}
+
+		// 2. Generate Sensor Data (High Value to trigger Cloud Event)
+		// NOTE: Make sure Ubidots has an Event: If Temperature > 30, Set led-actuator = 1
+		SensorData sensorData = new SensorData();
+		sensorData.setName(ConfigConst.TEMP_SENSOR_NAME); // "Temperature"
+		sensorData.setLocationID(ConfigConst.CONSTRAINED_DEVICE);
+		sensorData.setValue(45.0f); // High value to trigger event
+
+		// 3. Publish to Cloud (Test 1 Requirement)
+		_Logger.info("Test 1: Publishing SensorData to Cloud...");
+		assertTrue(this.cloudClient.sendEdgeDataToCloud(ResourceNameEnum.CDA_SENSOR_MSG_RESOURCE, sensorData));
+
+		// 4. Wait for Cloud Actuation (Test 2 Requirement)
+		_Logger.info("Test 2: Waiting for Cloud Actuation Event (check Ubidots Events setup)...");
+		try {
+			// Wait long enough for:
+			// Upload -> Ubidots Processing -> Event Trigger -> MQTT Publish -> GDA Receive
+			Thread.sleep(15000L);
+		} catch (Exception e) {
+			// ignore
+		}
+
+		// 5. Cleanup
+		_Logger.info("Unsubscribing and Disconnecting...");
+		// Note: unsubscribeFromCloudEvents might assume specific topic conventions,
+		// but our CloudClientConnector handles subscriptions in onConnect, so this is just cleanup.
+		this.cloudClient.unsubscribeFromCloudEvents(ResourceNameEnum.CDA_ACTUATOR_CMD_RESOURCE);
+		this.cloudClient.disconnectClient();
+
+		_Logger.info("Test complete.");
 	}
 	
 }

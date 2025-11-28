@@ -2,6 +2,7 @@
 /target/
 **/cert
 **/cred
+**/ubidots
 .settings
 .project
 .vscode
