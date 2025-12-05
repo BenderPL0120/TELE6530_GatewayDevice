@@ -70,6 +70,7 @@ enableConfirmedMsgs = True
 deviceLocationID        = gatewaydevice001
 enableLogging           = True
 pollCycleSecs           = 60
+enableRunForever        = True
 enableMqttClient        = True
 enableCoapServer        = False
 enableCoapClient        = False
@@ -83,21 +84,37 @@ testEmptyApp            = False
 
 # Humidity control configuration
 handleHumidityChangeOnDevice    = True
-humidityMaxTimePastThreshold    = 300
+humidityMaxTimePastThreshold    = 180
 nominalHumiditySetting          = 40.0
 triggerHumidifierFloor          = 30.0
 triggerHumidifierCeiling        = 50.0
 
 # Temperature control configuration
 handleTempChangeOnDevice        = True
-tempMaxTimePastThreshold        = 300
+tempMaxTimePastThreshold        = 180
 nominalTempSetting              = 20.0
 triggerTempFloor                = 10.0
 triggerTempCeiling              = 30.0
 
 # Pressure control configuration
 handlePressureChangeOnDevice    = True
-pressureMaxTimePastThreshold    = 300
+pressureMaxTimePastThreshold    = 180
 nominalPressureSetting          = 1000.0
 triggerPressureFloor            = 950.0
 triggerPressureCeiling          = 1050.0
+
+# Orientation control configuration (Pitch - Controls Window)
+# Pitch > 50.0 = OPEN, Pitch < -10.0 = CLOSE
+handleOrientationChangeOnDevice = True
+orientationMaxTimePastThreshold = 180
+nominalOrientationSetting       = 0.0
+triggerOrientationFloor         = -10.0
+triggerOrientationCeiling       = 50.0
+
+# Magnetic control configuration (Yaw - Safety Wind Lock)
+# Yaw inside (-50.0, 50.0) = Windy/Unsafe -> Force CLOSE
+handleMagneticChangeOnDevice    = True
+magneticMaxTimePastThreshold    = 180
+nominalMagneticSetting          = 180.0
+triggerMagneticFloor            = -50.0
+triggerMagneticCeiling          = 50.0

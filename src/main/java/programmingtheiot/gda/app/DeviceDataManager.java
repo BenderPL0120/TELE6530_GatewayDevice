@@ -85,7 +85,7 @@ public class DeviceDataManager implements IDataMessageListener
 	private int lastKnownHumidifierCommand = ConfigConst.OFF_COMMAND;
 
 	// Humidity thresholds and settings
-	private long humidityMaxTimePastThreshold = 300; // seconds
+	private long humidityMaxTimePastThreshold = 180; // seconds
 	private float nominalHumiditySetting = 40.0f;
 	private float triggerHumidifierFloor = 30.0f;
 	private float triggerHumidifierCeiling = 50.0f;
@@ -100,7 +100,7 @@ public class DeviceDataManager implements IDataMessageListener
 	private int lastKnownTemperatureCommand = ConfigConst.OFF_COMMAND;
 
 	// Temperature thresholds and settings
-	private long temperatureMaxTimePastThreshold = 300; // seconds
+	private long temperatureMaxTimePastThreshold = 180; // seconds
 	private float nominalTemperatureSetting = 20.0f;
 	private float triggerTemperatureFloor = 10.0f;
 	private float triggerTemperatureCeiling = 30.0f;
@@ -115,10 +115,36 @@ public class DeviceDataManager implements IDataMessageListener
 	private int lastKnownPressureCommand = ConfigConst.OFF_COMMAND;
 
 	// Pressure thresholds and settings
-	private long pressureMaxTimePastThreshold = 300; // seconds
+	private long pressureMaxTimePastThreshold = 180; // seconds
 	private float nominalPressureSetting = 1000.0f;
 	private float triggerPressureFloor = 950.0f;
 	private float triggerPressureCeiling = 1050.0f;
+
+	// Orientation control related variables
+	private ActuatorData latestWindowActuatorData = null; // Shared by both Orientation and Magnetic
+	private SensorData latestOrientationSensorData = null;
+	private OffsetDateTime latestOrientationSensorTimeStamp = null;
+
+	private boolean handleOrientationChangeOnDevice = false;
+	private int lastKnownWindowCommand = ConfigConst.OFF_COMMAND; // Shared state
+
+	private long orientationMaxTimePastThreshold = 180;
+	private float triggerOrientationFloor = -10.0f;
+	private float triggerOrientationCeiling = 50.0f;
+
+	// Magnetic control related variables
+	private SensorData latestMagneticSensorData = null;
+	private OffsetDateTime latestMagneticSensorTimeStamp = null;
+
+	private boolean handleMagneticChangeOnDevice = false;
+	private long magneticMaxTimePastThreshold = 180;
+	private float triggerMagneticFloor = -50.0f;
+	private float triggerMagneticCeiling = 50.0f;
+
+	// Record the last time cloud control device
+	private OffsetDateTime lastCloudWindowCommandTime = null;
+	// The validity lock period of cloud control
+	private static final long CLOUD_CMD_LOCKOUT_SECONDS = 120;
 
 	// constructors
 
@@ -225,6 +251,45 @@ public class DeviceDataManager implements IDataMessageListener
 
 					// Convert to ActuatorData to validate
 					ActuatorData ad = DataUtil.getInstance().jsonToActuatorData(msg);
+
+					if (ad.getTypeID() == ConfigConst.WINDOW_ACTUATOR_TYPE) {
+						int incomingCommand = ad.getCommand();
+						boolean isUnsafeWind = false;
+
+						// 1. Get current environment safety status (Check Safety / Yaw)
+						if (this.latestMagneticSensorData != null) {
+							float currentYaw = this.latestMagneticSensorData.getValue();
+							// If Yaw is between Floor and Ceiling, consider it windy/unsafe
+							isUnsafeWind = (currentYaw > this.triggerMagneticFloor) && (currentYaw < this.triggerMagneticCeiling);
+						}
+
+						// 2. Safety Priority Check
+						// If environment is unsafe and trying to execute OPEN command, reject it
+						if (isUnsafeWind && incomingCommand == ConfigConst.ON_COMMAND) {
+							_Logger.warning("Cloud Command OPEN rejected. Safety Lock Active (High Wind/Yaw detected). Window remains CLOSED.");
+							return false; // Stop processing, do not send to CDA
+						}
+
+						// 3. State Deduplication Check
+						// If new command matches current known state, ignore it
+						// Note: This needs to be checked after passing safety checks
+						if (incomingCommand == this.lastKnownWindowCommand) {
+							_Logger.info("Received Cloud Command matches current local state (" + incomingCommand + "). Ignoring to prevent duplication.");
+							return false; // Stop processing, do not trigger again
+						}
+
+						_Logger.info("Received valid Cloud Command for Window. Locking local control for " + CLOUD_CMD_LOCKOUT_SECONDS + " seconds.");
+						
+						// Update last timestamp
+						this.lastCloudWindowCommandTime = OffsetDateTime.now();
+
+						// Update last known state
+						this.lastKnownWindowCommand = incomingCommand;
+						_Logger.info("Updated local window state to: " + this.lastKnownWindowCommand);
+
+						// Activate buzzer
+						this.triggerSoundAlert(ad.getLocationID(), ad.getCommand());
+          }
 
 					// Convert back to JSON to send to CDA via MQTT
 					String jsonData = DataUtil.getInstance().actuatorDataToJson(ad);
@@ -499,36 +564,56 @@ public class DeviceDataManager implements IDataMessageListener
 				ConfigConst.GATEWAY_DEVICE, "triggerHumidifierCeiling");
 
 		// Parse temperature control configuration
-    this.handleTemperatureChangeOnDevice = configUtil.getBoolean(
-            ConfigConst.GATEWAY_DEVICE, ConfigConst.HANDLE_TEMP_CHANGE_ON_DEVICE_KEY);
+		this.handleTemperatureChangeOnDevice = configUtil.getBoolean(
+				ConfigConst.GATEWAY_DEVICE, ConfigConst.HANDLE_TEMP_CHANGE_ON_DEVICE_KEY);
 
-    this.temperatureMaxTimePastThreshold = configUtil.getInteger(
-            ConfigConst.GATEWAY_DEVICE, ConfigConst.TEMP_MAX_TIME_PAST_THRESHOLD_KEY);
+		this.temperatureMaxTimePastThreshold = configUtil.getInteger(
+				ConfigConst.GATEWAY_DEVICE, ConfigConst.TEMP_MAX_TIME_PAST_THRESHOLD_KEY);
 
-    this.nominalTemperatureSetting = configUtil.getFloat(
-            ConfigConst.GATEWAY_DEVICE, ConfigConst.NOMINAL_TEMP_SETTING_KEY);
+		this.nominalTemperatureSetting = configUtil.getFloat(
+				ConfigConst.GATEWAY_DEVICE, ConfigConst.NOMINAL_TEMP_SETTING_KEY);
 
-    this.triggerTemperatureFloor = configUtil.getFloat(
-            ConfigConst.GATEWAY_DEVICE, ConfigConst.TRIGGER_TEMP_FLOOR_KEY);
+		this.triggerTemperatureFloor = configUtil.getFloat(
+				ConfigConst.GATEWAY_DEVICE, ConfigConst.TRIGGER_TEMP_FLOOR_KEY);
 
-    this.triggerTemperatureCeiling = configUtil.getFloat(
-            ConfigConst.GATEWAY_DEVICE, ConfigConst.TRIGGER_TEMP_CEILING_KEY);
+		this.triggerTemperatureCeiling = configUtil.getFloat(
+				ConfigConst.GATEWAY_DEVICE, ConfigConst.TRIGGER_TEMP_CEILING_KEY);
 
-    // Parse pressure control configuration
-    this.handlePressureChangeOnDevice = configUtil.getBoolean(
-            ConfigConst.GATEWAY_DEVICE, ConfigConst.HANDLE_PRESSURE_CHANGE_ON_DEVICE_KEY);
+		// Parse pressure control configuration
+		this.handlePressureChangeOnDevice = configUtil.getBoolean(
+				ConfigConst.GATEWAY_DEVICE, ConfigConst.HANDLE_PRESSURE_CHANGE_ON_DEVICE_KEY);
 
-    this.pressureMaxTimePastThreshold = configUtil.getInteger(
-            ConfigConst.GATEWAY_DEVICE, ConfigConst.PRESSURE_MAX_TIME_PAST_THRESHOLD_KEY);
+		this.pressureMaxTimePastThreshold = configUtil.getInteger(
+				ConfigConst.GATEWAY_DEVICE, ConfigConst.PRESSURE_MAX_TIME_PAST_THRESHOLD_KEY);
 
-    this.nominalPressureSetting = configUtil.getFloat(
-            ConfigConst.GATEWAY_DEVICE, ConfigConst.NOMINAL_PRESSURE_SETTING_KEY);
+		this.nominalPressureSetting = configUtil.getFloat(
+				ConfigConst.GATEWAY_DEVICE, ConfigConst.NOMINAL_PRESSURE_SETTING_KEY);
 
-    this.triggerPressureFloor = configUtil.getFloat(
-            ConfigConst.GATEWAY_DEVICE, ConfigConst.TRIGGER_PRESSURE_FLOOR_KEY);
+		this.triggerPressureFloor = configUtil.getFloat(
+				ConfigConst.GATEWAY_DEVICE, ConfigConst.TRIGGER_PRESSURE_FLOOR_KEY);
 
-    this.triggerPressureCeiling = configUtil.getFloat(
-            ConfigConst.GATEWAY_DEVICE, ConfigConst.TRIGGER_PRESSURE_CEILING_KEY);
+		this.triggerPressureCeiling = configUtil.getFloat(
+				ConfigConst.GATEWAY_DEVICE, ConfigConst.TRIGGER_PRESSURE_CEILING_KEY);
+
+		// Parse Orientation control configuration
+		this.handleOrientationChangeOnDevice = configUtil.getBoolean(
+				ConfigConst.GATEWAY_DEVICE, "handleOrientationChangeOnDevice"); // Or use constant if defined
+		this.orientationMaxTimePastThreshold = configUtil.getInteger(
+				ConfigConst.GATEWAY_DEVICE, "orientationMaxTimePastThreshold");
+		this.triggerOrientationFloor = configUtil.getFloat(
+				ConfigConst.GATEWAY_DEVICE, "triggerOrientationFloor");
+		this.triggerOrientationCeiling = configUtil.getFloat(
+				ConfigConst.GATEWAY_DEVICE, "triggerOrientationCeiling");
+
+		// Parse Magnetic control configuration
+		this.handleMagneticChangeOnDevice = configUtil.getBoolean(
+				ConfigConst.GATEWAY_DEVICE, "handleMagneticChangeOnDevice");
+		this.magneticMaxTimePastThreshold = configUtil.getInteger(
+				ConfigConst.GATEWAY_DEVICE, "magneticMaxTimePastThreshold");
+		this.triggerMagneticFloor = configUtil.getFloat(
+				ConfigConst.GATEWAY_DEVICE, "triggerMagneticFloor");
+		this.triggerMagneticCeiling = configUtil.getFloat(
+				ConfigConst.GATEWAY_DEVICE, "triggerMagneticCeiling");
 
 		// Validate timing parameter - must be between 10 and 7200 seconds
 		if (this.humidityMaxTimePastThreshold < 10 || this.humidityMaxTimePastThreshold > 7200) {
@@ -566,6 +651,7 @@ public class DeviceDataManager implements IDataMessageListener
 		if (this.enableCloudClient) {
 			_Logger.info("Cloud client enabled.");
 			 this.cloudClient = new CloudClientConnector();
+			 this.cloudClient.setDataMessageListener(this);
 		}
 
 		// Initialize Persistence Client if enabled
@@ -642,6 +728,14 @@ public class DeviceDataManager implements IDataMessageListener
 		} else if (data.getTypeID() == ConfigConst.PRESSURE_SENSOR_TYPE) {
 			if (this.handlePressureChangeOnDevice) {
 				handlePressureSensorAnalysis(resourceName, data);
+			}
+		} else if (data.getTypeID() == ConfigConst.ORIENTATION_SENSOR_TYPE) {
+		if (this.handleOrientationChangeOnDevice) {
+			handleOrientationSensorAnalysis(resourceName, data);
+		}
+		} else if (data.getTypeID() == ConfigConst.MAGNETIC_SENSOR_TYPE) {
+			if (this.handleMagneticChangeOnDevice) {
+				handleMagneticSensorAnalysis(resourceName, data);
 			}
 		}
 		// Add other sensor type handlers here as needed
@@ -866,6 +960,165 @@ public class DeviceDataManager implements IDataMessageListener
 				this.latestPressureSensorTimeStamp = null;
 			}
 		}
+	}
+
+	/**
+	 * Pitch Analysis: Controls Window OPEN/CLOSE based on user tilt.
+	 */
+	private void handleOrientationSensorAnalysis(ResourceNameEnum resource, SensorData data)
+	{
+		// if is in cloud control period
+		if (this.lastCloudWindowCommandTime != null) {
+			OffsetDateTime now = OffsetDateTime.now();
+			long diff = ChronoUnit.SECONDS.between(this.lastCloudWindowCommandTime, now);
+
+			if (diff < CLOUD_CMD_LOCKOUT_SECONDS) {
+				_Logger.fine("Skipping local Window logic. Cloud command takes priority (Lockout active: " + diff + "s / " + CLOUD_CMD_LOCKOUT_SECONDS + "s).");
+				return; // exit directly
+			}
+		}
+
+		// 2. Magnetic Safety Lock
+		// If current Yaw indicates high wind, skip Pitch control
+		if (this.latestMagneticSensorData != null) {
+			float currentYaw = this.latestMagneticSensorData.getValue();
+
+			boolean isUnsafeWind = (currentYaw > this.triggerMagneticFloor) && (currentYaw < this.triggerMagneticCeiling);
+
+			if (isUnsafeWind) {
+				_Logger.info("Safety Lock Active: High Wind (Yaw: " + currentYaw + ") detected. Skipping Pitch control.");
+				return; // exit directly
+			}
+		}
+		float pitchVal = data.getValue();
+		_Logger.info("Analyzing Orientation (Pitch) data: " + pitchVal);
+
+		// Logic: Pitch > 50 (Ceiling) -> OPEN. Pitch < -10 (Floor) -> CLOSE.
+		boolean shouldOpen = pitchVal > this.triggerOrientationCeiling;
+		boolean shouldClose = pitchVal < this.triggerOrientationFloor;
+
+		if (shouldOpen || shouldClose) {
+			if (this.latestOrientationSensorData == null) {
+				this.latestOrientationSensorData = data;
+				this.latestOrientationSensorTimeStamp = getDateTimeFromData(data);
+				return;
+			}
+
+			OffsetDateTime curTimeStamp = getDateTimeFromData(data);
+			long diffSeconds = ChronoUnit.SECONDS.between(
+					this.latestOrientationSensorTimeStamp, curTimeStamp);
+
+			if (diffSeconds >= this.orientationMaxTimePastThreshold) {
+				ActuatorData ad = new ActuatorData();
+				ad.setName(ConfigConst.WINDOW_ACTUATOR_NAME);
+				ad.setLocationID(data.getLocationID());
+				ad.setTypeID(ConfigConst.WINDOW_ACTUATOR_TYPE);
+
+				if (shouldOpen) {
+					ad.setCommand(ConfigConst.ON_COMMAND);
+					ad.setValue(1.0f);
+					ad.setStateData("Window Opening (Pitch Control)");
+				} else {
+					ad.setCommand(ConfigConst.OFF_COMMAND);
+					ad.setValue(0.0f);
+					ad.setStateData("Window Closing (Pitch Control)");
+				}
+
+				// Check if command is different from last state to avoid spamming
+				if (ad.getCommand() != this.lastKnownWindowCommand) {
+					_Logger.info("Sending Window command (Pitch): " + ad.getCommand());
+					this.lastKnownWindowCommand = ad.getCommand();
+					// 1. Send Window Command
+					sendActuatorCommandtoCda(ResourceNameEnum.CDA_ACTUATOR_CMD_RESOURCE, ad);
+
+					// 2. Trigger Sound Alert (NEW ADDITION)
+					triggerSoundAlert(data.getLocationID(), ad.getCommand());
+				}
+
+				// Reset trackers
+				this.latestWindowActuatorData = ad;
+				this.latestOrientationSensorData = null;
+				this.latestOrientationSensorTimeStamp = null;
+			}
+		}
+	}
+
+	/**
+	 * Yaw Analysis: Safety Lock. If wind blows directly (Yaw between -50 and 50), FORCE CLOSE.
+	 */
+	private void handleMagneticSensorAnalysis(ResourceNameEnum resource, SensorData data)
+	{
+		float yawVal = data.getValue();
+		_Logger.info("Analyzing Magnetic (Yaw) data: " + yawVal);
+
+		// Logic: If Yaw is BETWEEN -50 and 50, it is "Windy" -> Force Close.
+		// Note: The logic structure differs slightly from Temp/Hum (checking 'inside' range for danger)
+		boolean isUnsafeWind = (yawVal > this.triggerMagneticFloor) && (yawVal < this.triggerMagneticCeiling);
+
+		if (isUnsafeWind) {
+			if (this.latestMagneticSensorData == null) {
+				this.latestMagneticSensorData = data;
+				this.latestMagneticSensorTimeStamp = getDateTimeFromData(data);
+				return;
+			}
+
+			OffsetDateTime curTimeStamp = getDateTimeFromData(data);
+			long diffSeconds = ChronoUnit.SECONDS.between(
+					this.latestMagneticSensorTimeStamp, curTimeStamp);
+
+			if (diffSeconds >= this.magneticMaxTimePastThreshold) {
+				// If currently OPEN, force CLOSE
+				if (this.lastKnownWindowCommand == ConfigConst.ON_COMMAND) {
+					ActuatorData ad = new ActuatorData();
+					ad.setName(ConfigConst.WINDOW_ACTUATOR_NAME);
+					ad.setLocationID(data.getLocationID());
+					ad.setTypeID(ConfigConst.WINDOW_ACTUATOR_TYPE);
+					ad.setCommand(ConfigConst.OFF_COMMAND); // Force Close
+					ad.setValue(0.0f);
+					ad.setStateData("Window Closing (High Wind/Magnetic Safety)");
+
+					_Logger.info("Safety condition triggered (Yaw). Forcing Window CLOSE.");
+
+					this.lastKnownWindowCommand = ad.getCommand();
+					// 1. Send Window Command
+					sendActuatorCommandtoCda(ResourceNameEnum.CDA_ACTUATOR_CMD_RESOURCE, ad);
+
+					// 2. Trigger Sound Alert (NEW ADDITION)
+					triggerSoundAlert(data.getLocationID(), ConfigConst.OFF_COMMAND);
+
+					this.latestWindowActuatorData = ad;
+				}
+
+				// Reset trackers
+				this.latestMagneticSensorData = null;
+				this.latestMagneticSensorTimeStamp = null;
+			}
+		}
+	}
+
+	/**
+	 * Helper to send command to Sound Actuator (Buzzer).
+	 * Mirrors the CDA logic: Open Action -> Buzzer ON, Close Action -> Buzzer OFF.
+	 *
+	 * @param locationID The location ID of the device
+	 * @param command The command associated with the window action (ON or OFF)
+	 */
+	private void triggerSoundAlert(String locationID, int command)
+	{
+		ActuatorData buzzerData = new ActuatorData();
+		buzzerData.setName(ConfigConst.BUZZER_ACTUATOR_NAME);
+		buzzerData.setLocationID(locationID);
+		buzzerData.setTypeID(ConfigConst.BUZZER_ACTUATOR_TYPE);
+
+		// Sync buzzer command with window command (ON=Open Sound, OFF=Close Sound)
+		buzzerData.setCommand(command);
+		buzzerData.setValue(0.0f);
+		buzzerData.setStateData("Buzzer Alert: " + (command == ConfigConst.ON_COMMAND ? "ON" : "OFF"));
+
+		_Logger.info("Triggering Sound Alert for Window action via GDA logic.");
+
+		// Send the command
+		sendActuatorCommandtoCda(ResourceNameEnum.CDA_ACTUATOR_CMD_RESOURCE, buzzerData);
 	}
 
 	/**

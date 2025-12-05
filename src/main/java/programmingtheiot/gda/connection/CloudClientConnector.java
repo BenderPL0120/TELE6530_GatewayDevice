@@ -181,6 +181,13 @@ public class CloudClientConnector implements ICloudClient, IConnectionListener
 
 		// Subscribe with the dedicated listener
 		this.mqttClient.subscribeToTopic(ledTopic, this.qosLevel, ledListener);
+
+		// Window Logic
+		WindowControlMessageListener windowListener = new WindowControlMessageListener(this.dataMsgListener);
+		String windowTopic = createTopicName(windowListener.getResource().getDeviceName(), ConfigConst.WINDOW_ACTUATOR_NAME);
+		this.mqttClient.subscribeToTopic(windowTopic, this.qosLevel, windowListener);
+
+//		_Logger.info("Subscribed to Cloud Window Control topic: " + windowTopic);
 	}
 
 	@Override
@@ -235,7 +242,6 @@ public class CloudClientConnector implements ICloudClient, IConnectionListener
 	}
 
 	// Inner Class for LED Listener
-
 	private class LedEnablementMessageListener implements IMqttMessageListener
 	{
 		private IDataMessageListener dataMsgListener = null;
@@ -264,7 +270,7 @@ public class CloudClientConnector implements ICloudClient, IConnectionListener
 				// Ensure DataUtil can handle this or parse manually.
 				ActuatorData actuatorData = DataUtil.getInstance().jsonToActuatorData(jsonData);
 
-				actuatorData.setLocationID(ConfigConst.CONSTRAINED_DEVICE);
+				actuatorData.setLocationID("constraineddevice001");
 				actuatorData.setTypeID(this.typeID);
 				actuatorData.setName(this.itemName);
 
@@ -291,6 +297,61 @@ public class CloudClientConnector implements ICloudClient, IConnectionListener
 				}
 			} catch (Exception e) {
 				_Logger.warning("Failed to convert message payload to ActuatorData.");
+			}
+		}
+	}
+
+	// Inner Class for Window Listner
+	private class WindowControlMessageListener implements IMqttMessageListener
+	{
+		private IDataMessageListener dataMsgListener = null;
+		private ResourceNameEnum resource = ResourceNameEnum.CDA_ACTUATOR_CMD_RESOURCE;
+		private int typeID = ConfigConst.WINDOW_ACTUATOR_TYPE;
+		private String itemName = ConfigConst.WINDOW_ACTUATOR_NAME;
+
+		WindowControlMessageListener(IDataMessageListener dataMsgListener)
+		{
+			this.dataMsgListener = dataMsgListener;
+		}
+
+		public ResourceNameEnum getResource()
+		{
+			return this.resource;
+		}
+
+		@Override
+		public void messageArrived(String topic, MqttMessage message) throws Exception
+		{
+			try {
+				String jsonData = new String(message.getPayload());
+
+				ActuatorData actuatorData = DataUtil.getInstance().jsonToActuatorData(jsonData);
+
+				// Complete ID and name
+				actuatorData.setLocationID("constraineddevice001");
+				actuatorData.setTypeID(this.typeID);
+				actuatorData.setName(this.itemName);
+
+				int val = (int) actuatorData.getValue();
+
+				// Log record
+				if (val == ConfigConst.ON_COMMAND) {
+					_Logger.info("Received Cloud Window Command: OPEN");
+					actuatorData.setCommand(ConfigConst.ON_COMMAND);
+					actuatorData.setStateData("Window Opening (Cloud Command)");
+				} else {
+					_Logger.info("Received Cloud Window Command: CLOSE");
+					actuatorData.setCommand(ConfigConst.OFF_COMMAND);
+					actuatorData.setStateData("Window Closing (Cloud Command)");
+				}
+
+				if (this.dataMsgListener != null) {
+					String outgoingJson = DataUtil.getInstance().actuatorDataToJson(actuatorData);
+					this.dataMsgListener.handleIncomingMessage(
+							ResourceNameEnum.CDA_ACTUATOR_CMD_RESOURCE, outgoingJson);
+				}
+			} catch (Exception e) {
+				_Logger.warning("Failed to parse Cloud Window command.");
 			}
 		}
 	}
