@@ -128,7 +128,7 @@ public class DeviceDataManager implements IDataMessageListener
 	private boolean handleOrientationChangeOnDevice = false;
 	private int lastKnownWindowCommand = ConfigConst.OFF_COMMAND; // Shared state
 
-	private long orientationMaxTimePastThreshold = 180;
+	private long orientationMaxTimePastThreshold = 60;
 	private float triggerOrientationFloor = -10.0f;
 	private float triggerOrientationCeiling = 50.0f;
 
@@ -137,7 +137,7 @@ public class DeviceDataManager implements IDataMessageListener
 	private OffsetDateTime latestMagneticSensorTimeStamp = null;
 
 	private boolean handleMagneticChangeOnDevice = false;
-	private long magneticMaxTimePastThreshold = 180;
+	private long magneticMaxTimePastThreshold = 60;
 	private float triggerMagneticFloor = -50.0f;
 	private float triggerMagneticCeiling = 50.0f;
 
@@ -1051,14 +1051,18 @@ public class DeviceDataManager implements IDataMessageListener
 		float yawVal = data.getValue();
 		_Logger.info("Analyzing Magnetic (Yaw) data: " + yawVal);
 
-		// Logic: If Yaw is BETWEEN -50 and 50, it is "Windy" -> Force Close.
+		// Logic: If Yaw is BETWEEN -50 and 50 (or configured range), it is "Windy" -> Unsafe.
 		// Note: The logic structure differs slightly from Temp/Hum (checking 'inside' range for danger)
 		boolean isUnsafeWind = (yawVal > this.triggerMagneticFloor) && (yawVal < this.triggerMagneticCeiling);
 
 		if (isUnsafeWind) {
+			// === Unsafe Condition Handling ===
+			
+			// If this is the first unsafe detection, set the lock and timestamp
 			if (this.latestMagneticSensorData == null) {
 				this.latestMagneticSensorData = data;
 				this.latestMagneticSensorTimeStamp = getDateTimeFromData(data);
+				_Logger.info("Unsafe Wind detected (Yaw: " + yawVal + "). Safety Lock ENGAGED.");
 				return;
 			}
 
@@ -1066,6 +1070,7 @@ public class DeviceDataManager implements IDataMessageListener
 			long diffSeconds = ChronoUnit.SECONDS.between(
 					this.latestMagneticSensorTimeStamp, curTimeStamp);
 
+			// If the unsafe condition persists longer than the threshold
 			if (diffSeconds >= this.magneticMaxTimePastThreshold) {
 				// If currently OPEN, force CLOSE
 				if (this.lastKnownWindowCommand == ConfigConst.ON_COMMAND) {
@@ -1083,13 +1088,25 @@ public class DeviceDataManager implements IDataMessageListener
 					// 1. Send Window Command
 					sendActuatorCommandtoCda(ResourceNameEnum.CDA_ACTUATOR_CMD_RESOURCE, ad);
 
-					// 2. Trigger Sound Alert (NEW ADDITION)
+					// 2. Trigger Sound Alert
 					triggerSoundAlert(data.getLocationID(), ConfigConst.OFF_COMMAND);
 
 					this.latestWindowActuatorData = ad;
 				}
 
-				// Reset trackers
+				// Reset trackers. This effectively resets the timer for the next "Force Close" check,
+				// but since the next reading might still be unsafe, the lock may re-engage immediately.
+				this.latestMagneticSensorData = null;
+				this.latestMagneticSensorTimeStamp = null;
+			}
+		} else {
+			// === Safe Condition Handling (FIX) ===
+			
+			// If the current reading is SAFE, but the lock is currently active, release it.
+			if (this.latestMagneticSensorData != null) {
+				_Logger.info("Magnetic (Yaw) reading is now SAFE: " + yawVal + ". Releasing Safety Lock.");
+				
+				// Clear the safety lock state immediately
 				this.latestMagneticSensorData = null;
 				this.latestMagneticSensorTimeStamp = null;
 			}

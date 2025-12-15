@@ -106,7 +106,7 @@ triggerPressureCeiling          = 1050.0
 # Orientation control configuration (Pitch - Controls Window)
 # Pitch > 50.0 = OPEN, Pitch < -10.0 = CLOSE
 handleOrientationChangeOnDevice = True
-orientationMaxTimePastThreshold = 180
+orientationMaxTimePastThreshold = 60
 nominalOrientationSetting       = 0.0
 triggerOrientationFloor         = -10.0
 triggerOrientationCeiling       = 50.0
@@ -114,7 +114,7 @@ triggerOrientationCeiling       = 50.0
 # Magnetic control configuration (Yaw - Safety Wind Lock)
 # Yaw inside (-50.0, 50.0) = Windy/Unsafe -> Force CLOSE
 handleMagneticChangeOnDevice    = True
-magneticMaxTimePastThreshold    = 180
+magneticMaxTimePastThreshold    = 60
 nominalMagneticSetting          = 180.0
 triggerMagneticFloor            = -50.0
 triggerMagneticCeiling          = 50.0
